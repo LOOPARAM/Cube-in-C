@@ -382,7 +382,7 @@ Point2D Vec3ToCamera(Vector3 *p) {
     return PointInCamera;
 }
 
-//큐브 회전 함수
+//큐브 이동 함수
 void MoveCube(Cube* cube, char axis, int length, Line2D* cube_lines, Line2D* prev_cube_lines) {
     // 먼저 이전 큐브를 완전히 지우기
     for (int i = 0; i < 12; i++) {
@@ -447,9 +447,103 @@ void MoveCube(Cube* cube, char axis, int length, Line2D* cube_lines, Line2D* pre
     }
 }
 
-//큐브 회전 함수
+//큐브 회전 함수 (큐브 중심을 기준으로 회전)
 void RotateCube(Cube* cube, char axis, float angle, Line2D* cube_lines, Line2D* prev_cube_lines) {
+    // 먼저 이전 큐브를 완전히 지우기
+    for (int i = 0; i < 12; i++) {
+        DelObj(&cube_lines[i].line);
+    }
 
+    angle = (angle * M_PI / 180.0);
+
+    // 큐브의 중심점 계산
+    Vector3 center = {0, 0, 0};
+    for (int i = 0; i < 8; i++) {
+        center.x += cube->point[i].x;
+        center.y += cube->point[i].y;
+        center.z += cube->point[i].z;
+    }
+    center.x /= 8.0;
+    center.y /= 8.0;
+    center.z /= 8.0;
+
+    // 큐브의 모든 점을 중심점 기준으로 회전
+    for (int i = 0; i < 8; i++) {
+        // 1. 중심점으로 이동 (translate to origin)
+        float x = cube->point[i].x - center.x;
+        float y = cube->point[i].y - center.y;
+        float z = cube->point[i].z - center.z;
+
+        // 2. 회전 변환 적용
+        float new_x, new_y, new_z;
+        if (axis == 'x') {
+            // X축 회전
+            new_x = x;
+            new_y = cos(angle) * y - sin(angle) * z;
+            new_z = sin(angle) * y + cos(angle) * z;
+        }
+        else if (axis == 'y') {
+            // Y축 회전
+            new_x = cos(angle) * x + sin(angle) * z;
+            new_y = y;
+            new_z = -sin(angle) * x + cos(angle) * z;
+        }
+        else if (axis == 'z') {
+            // Z축 회전
+            new_x = cos(angle) * x - sin(angle) * y;
+            new_y = sin(angle) * x + cos(angle) * y;
+            new_z = z;
+        }
+
+        // 3. 다시 원래 위치로 이동 (translate back)
+        cube->point[i].x = new_x + center.x;
+        cube->point[i].y = new_y + center.y;
+        cube->point[i].z = new_z + center.z;
+    }
+
+    // 새로운 2D 좌표로 변환
+    Point2D new_point[8];
+    for (int i = 0; i < 8; i++) {
+        new_point[i] = Vec3ToCamera(&cube->point[i]);
+    }
+
+    // 모든 라인 스택 초기화
+    for (int i = 0; i < 12; i++) {
+        initStack(&cube_lines[i].line);
+        initStack(&prev_cube_lines[i].line);
+    }
+
+    // 정육면체 모서리 연결 (12개의 모서리)
+    // 앞면 (z = 20) 4개 모서리
+    DrawLine(&new_point[0], &new_point[2], &cube_lines[0], &prev_cube_lines[0]);
+    DrawLine(&new_point[2], &new_point[4], &cube_lines[1], &prev_cube_lines[1]);
+    DrawLine(&new_point[4], &new_point[3], &cube_lines[2], &prev_cube_lines[2]);
+    DrawLine(&new_point[3], &new_point[0], &cube_lines[3], &prev_cube_lines[3]);
+
+    // 뒷면 (z = -20) 4개 모서리
+    DrawLine(&new_point[1], &new_point[5], &cube_lines[4], &prev_cube_lines[4]);
+    DrawLine(&new_point[5], &new_point[7], &cube_lines[5], &prev_cube_lines[5]);
+    DrawLine(&new_point[7], &new_point[6], &cube_lines[6], &prev_cube_lines[6]);
+    DrawLine(&new_point[6], &new_point[1], &cube_lines[7], &prev_cube_lines[7]);
+
+    // 앞면과 뒷면을 연결하는 4개 모서리
+    DrawLine(&new_point[0], &new_point[1], &cube_lines[8], &prev_cube_lines[8]);
+    DrawLine(&new_point[2], &new_point[5], &cube_lines[9], &prev_cube_lines[9]);
+    DrawLine(&new_point[4], &new_point[7], &cube_lines[10], &prev_cube_lines[10]);
+    DrawLine(&new_point[3], &new_point[6], &cube_lines[11], &prev_cube_lines[11]);
+
+    // 모든 라인 업데이트 (새로운 큐브 그리기)
+    for (int i = 0; i < 12; i++) {
+        int obj_size = getSize(&cube_lines[i].line);
+        for (int j = 0; j < obj_size; j++) {
+            Point2D* pointPtr = (Point2D*)getAtIndex(&cube_lines[i].line, j);
+            if (pointPtr != NULL) {
+                Point2D point = *pointPtr;
+                moveCursor(round(point.x)*2, round(point.y));
+                printf("* ");
+            }
+        }
+    }
 }
 
 //main 함수
@@ -471,31 +565,31 @@ int main() {
     for (int i = 0; i < 10; i++) {
         DrawLine(&point1,&point2, &_line, &prev_line);
         update(&_line.line, &prev_line.line);
-        usleep(10000);
+        usleep(30000);
         point2.y -= 1;
     }
     for (int i = 0; i < 20; i++) {
         DrawLine(&point1,&point2, &_line, &prev_line);
         update(&_line.line, &prev_line.line);
-        usleep(10000);
+        usleep(30000);
         point2.x -= 1;
     }
     for (int i = 0; i < 20; i++) {
         DrawLine(&point1,&point2, &_line, &prev_line);
         update(&_line.line, &prev_line.line);
-        usleep(10000);
+        usleep(30000);
         point2.y += 1;
     }
     for (int i = 0; i < 20; i++) {
         DrawLine(&point1,&point2, &_line, &prev_line);
         update(&_line.line, &prev_line.line);
-        usleep(10000);
+        usleep(30000);
         point2.x += 1;
     }
     for (int i = 0; i < 10; i++) {
         DrawLine(&point1,&point2, &_line, &prev_line);
         update(&_line.line, &prev_line.line);
-        usleep(10000);
+        usleep(30000);
         point2.y -= 1;
     }
 
@@ -553,6 +647,13 @@ int main() {
         update(&cube_lines[i].line, &prev_cube_lines[i].line);
     }
 
+    // for (int i = 0; i < 1000; i++) {
+    //     RotateCube(&cube, 'x', +0.3, cube_lines, prev_cube_lines);
+    //     RotateCube(&cube, 'y', +0.6, cube_lines, prev_cube_lines);
+    //     RotateCube(&cube, 'z', +0.9, cube_lines, prev_cube_lines);
+    //     usleep(10000);
+    // }
+
     char key;
     while (1) {
         if (kbhit()) {
@@ -582,6 +683,30 @@ int main() {
                 moveCursor(0,  -1);
                 printf("E 키 눌림\n");
                 MoveCube(&cube, 'z', -1, cube_lines, prev_cube_lines);
+            } else if (key == 'j') {
+                moveCursor(0,  -1);
+                printf("J 키 눌림\n");
+                RotateCube(&cube, 'z', -2, cube_lines, prev_cube_lines);
+            } else if (key == 'l') {
+                moveCursor(0,  -1);
+                printf("L 키 눌림\n");
+                RotateCube(&cube, 'z', +2, cube_lines, prev_cube_lines);
+            } else if (key == 'i') {
+                moveCursor(0,  -1);
+                printf("I 키 눌림\n");
+                RotateCube(&cube, 'x', -2, cube_lines, prev_cube_lines);
+            } else if (key == 'k') {
+                moveCursor(0,  -1);
+                printf("K 키 눌림\n");
+                RotateCube(&cube, 'x', +2, cube_lines, prev_cube_lines);
+            } else if (key == 'u') {
+                moveCursor(0,  -1);
+                printf("U 키 눌림\n");
+                RotateCube(&cube, 'y', -2, cube_lines, prev_cube_lines);
+            } else if (key == 'o') {
+                moveCursor(0,  -1);
+                printf("O 키 눌림\n");
+                RotateCube(&cube, 'y', +2, cube_lines, prev_cube_lines);
             }
 
         }
