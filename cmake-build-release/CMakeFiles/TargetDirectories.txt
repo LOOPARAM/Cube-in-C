@@ -1,0 +1,3 @@
+/Users/lgh/Desktop/KH_C/3D/cmake-build-release/CMakeFiles/3D.dir
+/Users/lgh/Desktop/KH_C/3D/cmake-build-release/CMakeFiles/edit_cache.dir
+/Users/lgh/Desktop/KH_C/3D/cmake-build-release/CMakeFiles/rebuild_cache.dir
