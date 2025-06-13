@@ -17,11 +17,13 @@
 #define FOV 60
 #define FOV_RAD (FOV * M_PI / 180.0)  // 도를 라디안으로 변환
 #define d (1.0 / tan(FOV_RAD / 2.0))
+
+//카메라의 좌표
 #define CAMERA_X (x_size / 2)
 #define CAMERA_Y (y_size / 2)
 #define CAMERA_Z -70
 
-// 아웃코드 정의
+// 아웃코드 정의, 정해진 화면 밖으로 넘어가면 선 렌더링 안하는거임
 #define INSIDE 0  // 0000
 #define LEFT   1  // 0001
 #define RIGHT  2  // 0010
@@ -43,6 +45,7 @@ struct Vector3 {
     float y;
     float z;
 };
+//Cube
 struct Cube {
     Vector3 point[8];
 };
