@@ -8,7 +8,6 @@
 #include "basic.h"
 #include <time.h>
 
-
 //화면의 가로, 세로 크기를 표현
 #define x_size 100
 #define y_size 60
@@ -30,6 +29,9 @@
 #define BOTTOM 4  // 0100
 #define TOP    8  // 1000
 
+// 황금비 정의
+#define PHI 1.618033988749895f  // (1 + sqrt(5)) / 2
+
 //점2D 구조체
 struct Point2D {
     float x;
@@ -45,11 +47,10 @@ struct Vector3 {
     float y;
     float z;
 };
-//Cube
-struct Cube {
-    Vector3 point[8];
+//정20면체 구조체 (12개의 꼭짓점)
+struct Icosahedron {
+    Vector3 point[12];
 };
-
 
 //함수 미리 선언
 int kbhit();
@@ -63,13 +64,14 @@ int computeOutCode(Point2D *point);
 bool clipLine(Point2D *p1, Point2D *p2, Point2D *clipped_p1, Point2D *clipped_p2);
 void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev_line);
 Point2D Vec3ToCamera(Vector3 *p);
-void MoveCube(Cube* cube);
-void RotateCube(Cube* cube, char axis, float angle, Line2D* cube_lines, Line2D* prev_cube_lines);
+void MoveIcosahedron(struct Icosahedron* icosa, char axis, int length, Line2D* icosa_lines, Line2D* prev_icosa_lines);
+void RotateIcosahedron(struct Icosahedron* icosa, char axis, float angle, Line2D* icosa_lines, Line2D* prev_icosa_lines);
+void InitIcosahedron(struct Icosahedron* icosa, float scale);
 
 //화면 모든 픽셀값에 대한 정보
 char screen[y_size][x_size] = {};
 
-//키 입력 체크 -> 빡세서 gpt 시킴
+//키 입력 체크
 int kbhit() {
     struct termios oldt, newt;
     int ch;
@@ -96,7 +98,7 @@ int kbhit() {
 }
 
 //화면 초기화 함수
-void initScreen() {;
+void initScreen() {
     for (int i = 0; i < y_size; i++) {
         for (int j = 0; j < x_size; j++) {
             if (j == 0 || i == 0 || j == x_size - 1 || i == y_size-1) {
@@ -130,12 +132,11 @@ void clearConsole()
     system("clear");
 }
 
-//없데이트 ㅋ
+//업데이트
 void update(Stack* obj, Stack* prev_obj) {
     int obj_size = getSize(obj);
     int prev_size = getSize(prev_obj);
     moveCursor(0, -1);
-    //printf("%d / %d", obj_size, prev_size);
 
     // Clear previous line using the initial size
     for (int i = 0; i < prev_size; i++) {
@@ -242,7 +243,7 @@ bool clipLine(Point2D *p1, Point2D *p2, Point2D *clipped_p1, Point2D *clipped_p2
     return accept;
 }
 
-// 수정된 DrawLine 함수
+// DrawLine 함수
 void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev_line) {
     Line2D duplicate_line = *line;
     initStack(&prev_line->line);
@@ -255,7 +256,6 @@ void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev
 
     // 선분 클리핑 수행
     if (!clipLine(p1, p2, &clipped_p1, &clipped_p2)) {
-        // 선분이 완전히 화면 밖에 있으면 아무것도 그리지 않음
         return;
     }
 
@@ -264,27 +264,15 @@ void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev
     int start_y = round(clipped_p1.y);
     int end_x = round(clipped_p2.x);
     int end_y = round(clipped_p2.y);
-    if (start_x >= x_size-1) {
-        start_x = x_size-2;
-    }
-    if (end_x >= x_size-1) {
-        end_x = x_size-2;
-    }
-    if (start_x <= 0) {
-        start_x = 1;
-    }
-    if (end_x <= 0) {
-        end_x = 1;
-    }
-    if (start_y >= y_size-2) {
-        start_y = y_size-3;
-    }
-    if (end_y >= y_size-2) {
-        end_y = y_size-3;
-    }
 
+    if (start_x >= x_size-1) start_x = x_size-2;
+    if (end_x >= x_size-1) end_x = x_size-2;
+    if (start_x <= 0) start_x = 1;
+    if (end_x <= 0) end_x = 1;
+    if (start_y >= y_size-2) start_y = y_size-3;
+    if (end_y >= y_size-2) end_y = y_size-3;
 
-    // 나머지는 기존 브레젠험 알고리즘과 동일
+    // 브레젠험 알고리즘
     int width = end_x - start_x;
     int height = end_y - start_y;
 
@@ -301,7 +289,6 @@ void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev
 
     if (isGradualSlope) {
         while (x != end_x) {
-            // 화면 경계 내부인지 한 번 더 확인
             if (x >= 0 && x < x_size && y >= 0 && y < y_size) {
                 Point2D* point_ptr = (Point2D*)malloc(sizeof(Point2D));
                 if (!point_ptr) {
@@ -323,7 +310,6 @@ void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev
         }
     } else {
         while (y != end_y) {
-            // 화면 경계 내부인지 한 번 더 확인
             if (x >= 0 && x < x_size && y >= 0 && y < y_size) {
                 Point2D* point_ptr = (Point2D*)malloc(sizeof(Point2D));
                 if (!point_ptr) {
@@ -345,7 +331,7 @@ void DrawLine(Point2D *p1, Point2D *p2, struct Line2D *line, struct Line2D *prev
         }
     }
 
-    // 마지막 점도 추가 (화면 경계 내부인 경우)
+    // 마지막 점도 추가
     if (x >= 0 && x < x_size && y >= 0 && y < y_size) {
         Point2D* point_ptr = (Point2D*)malloc(sizeof(Point2D));
         if (!point_ptr) {
@@ -372,9 +358,9 @@ Point2D Vec3ToCamera(Vector3 *p) {
 
     // 표준 원근 투영
     PointInCamera.x = (x / z) * d;
-    PointInCamera.y = (y / z) * d;  // 이 부분이 수정됨
+    PointInCamera.y = (y / z) * d;
 
-    // 종횡비 보정 (보통 x에만 적용)
+    // 종횡비 보정
     float aspect_ratio = (float)y_size / x_size;
     PointInCamera.x *= aspect_ratio;
 
@@ -385,62 +371,88 @@ Point2D Vec3ToCamera(Vector3 *p) {
     return PointInCamera;
 }
 
-//큐브 이동 함수
-void MoveCube(Cube* cube, char axis, int length, Line2D* cube_lines, Line2D* prev_cube_lines) {
-    // 먼저 이전 큐브를 완전히 지우기
+// 정20면체 초기화 함수
+void InitIcosahedron(struct Icosahedron* icosa, float scale) {
+    // 정20면체의 12개 꼭짓점 좌표 (황금비 사용)
+    // 3개의 직교하는 황금직사각형의 꼭짓점들
+
+    // 첫 번째 황금직사각형 (YZ 평면)
+    icosa->point[0] = (Vector3){0, scale, scale * PHI};
+    icosa->point[1] = (Vector3){0, -scale, scale * PHI};
+    icosa->point[2] = (Vector3){0, scale, -scale * PHI};
+    icosa->point[3] = (Vector3){0, -scale, -scale * PHI};
+
+    // 두 번째 황금직사각형 (XZ 평면)
+    icosa->point[4] = (Vector3){scale, scale * PHI, 0};
+    icosa->point[5] = (Vector3){-scale, scale * PHI, 0};
+    icosa->point[6] = (Vector3){scale, -scale * PHI, 0};
+    icosa->point[7] = (Vector3){-scale, -scale * PHI, 0};
+
+    // 세 번째 황금직사각형 (XY 평면)
+    icosa->point[8] = (Vector3){scale * PHI, 0, scale};
+    icosa->point[9] = (Vector3){scale * PHI, 0, -scale};
+    icosa->point[10] = (Vector3){-scale * PHI, 0, scale};
+    icosa->point[11] = (Vector3){-scale * PHI, 0, -scale};
+
+    // 화면 중심으로 이동
     for (int i = 0; i < 12; i++) {
-        DelObj(&cube_lines[i].line);
+        icosa->point[i].x += x_size/2;
+        icosa->point[i].y += y_size/2;
+        icosa->point[i].z += 0;
+    }
+}
+
+//정20면체 이동 함수
+void MoveIcosahedron(struct Icosahedron* icosa, char axis, int length, Line2D* icosa_lines, Line2D* prev_icosa_lines) {
+    // 먼저 이전 정20면체를 완전히 지우기
+    for (int i = 0; i < 30; i++) {  // 정20면체는 30개의 모서리
+        DelObj(&icosa_lines[i].line);
     }
 
-    // 큐브의 모든 점 이동
-    for (int i = 0; i < 8; i++) {
+    // 정20면체의 모든 점 이동
+    for (int i = 0; i < 12; i++) {
         if (axis == 'x') {
-            cube->point[i].x += length;
+            icosa->point[i].x += length;
         }
         else if (axis == 'y') {
-            cube->point[i].y += length;
+            icosa->point[i].y += length;
         }
         else if (axis == 'z') {
-            cube->point[i].z += length;
+            icosa->point[i].z += length;
         }
     }
 
     // 새로운 2D 좌표로 변환
-    Point2D new_point[8];
-    for (int i = 0; i < 8; i++) {
-        new_point[i] = Vec3ToCamera(&cube->point[i]);
+    Point2D new_point[12];
+    for (int i = 0; i < 12; i++) {
+        new_point[i] = Vec3ToCamera(&icosa->point[i]);
     }
 
     // 모든 라인 스택 초기화
-    for (int i = 0; i < 12; i++) {
-        initStack(&cube_lines[i].line);
-        initStack(&prev_cube_lines[i].line);
+    for (int i = 0; i < 30; i++) {
+        initStack(&icosa_lines[i].line);
+        initStack(&prev_icosa_lines[i].line);
     }
 
-    // 정육면체 모서리 연결 (12개의 모서리)
-    // 앞면 (z = 20) 4개 모서리
-    DrawLine(&new_point[0], &new_point[2], &cube_lines[0], &prev_cube_lines[0]);
-    DrawLine(&new_point[2], &new_point[4], &cube_lines[1], &prev_cube_lines[1]);
-    DrawLine(&new_point[4], &new_point[3], &cube_lines[2], &prev_cube_lines[2]);
-    DrawLine(&new_point[3], &new_point[0], &cube_lines[3], &prev_cube_lines[3]);
+    // 정20면체의 30개 모서리 연결
+    int edges[30][2] = {
+        {0, 1}, {0, 4}, {0, 5}, {0, 8}, {0, 10},
+        {1, 6}, {1, 7}, {1, 8}, {1, 10}, {2, 3},
+        {2, 4}, {2, 5}, {2, 9}, {2, 11}, {3, 6},
+        {3, 7}, {3, 9}, {3, 11}, {4, 5}, {4, 8},
+        {4, 9}, {5, 10}, {5, 11}, {6, 7}, {6, 8},
+        {6, 9}, {7, 10}, {7, 11}, {8, 9}, {10, 11}
+    };
 
-    // 뒷면 (z = -20) 4개 모서리
-    DrawLine(&new_point[1], &new_point[5], &cube_lines[4], &prev_cube_lines[4]);
-    DrawLine(&new_point[5], &new_point[7], &cube_lines[5], &prev_cube_lines[5]);
-    DrawLine(&new_point[7], &new_point[6], &cube_lines[6], &prev_cube_lines[6]);
-    DrawLine(&new_point[6], &new_point[1], &cube_lines[7], &prev_cube_lines[7]);
+    for (int i = 0; i < 30; i++) {
+        DrawLine(&new_point[edges[i][0]], &new_point[edges[i][1]], &icosa_lines[i], &prev_icosa_lines[i]);
+    }
 
-    // 앞면과 뒷면을 연결하는 4개 모서리
-    DrawLine(&new_point[0], &new_point[1], &cube_lines[8], &prev_cube_lines[8]);
-    DrawLine(&new_point[2], &new_point[5], &cube_lines[9], &prev_cube_lines[9]);
-    DrawLine(&new_point[4], &new_point[7], &cube_lines[10], &prev_cube_lines[10]);
-    DrawLine(&new_point[3], &new_point[6], &cube_lines[11], &prev_cube_lines[11]);
-
-    // 모든 라인 업데이트 (새로운 큐브 그리기)
-    for (int i = 0; i < 12; i++) {
-        int obj_size = getSize(&cube_lines[i].line);
+    // 모든 라인 업데이트 (새로운 정20면체 그리기)
+    for (int i = 0; i < 30; i++) {
+        int obj_size = getSize(&icosa_lines[i].line);
         for (int j = 0; j < obj_size; j++) {
-            Point2D* pointPtr = (Point2D*)getAtIndex(&cube_lines[i].line, j);
+            Point2D* pointPtr = (Point2D*)getAtIndex(&icosa_lines[i].line, j);
             if (pointPtr != NULL) {
                 Point2D point = *pointPtr;
                 moveCursor(round(point.x)*2, round(point.y));
@@ -450,96 +462,88 @@ void MoveCube(Cube* cube, char axis, int length, Line2D* cube_lines, Line2D* pre
     }
 }
 
-//큐브 회전 함수 (큐브 중심을 기준으로 회전)
-void RotateCube(Cube* cube, char axis, float angle, Line2D* cube_lines, Line2D* prev_cube_lines) {
-    // 먼저 이전 큐브를 완전히 지우기
-    for (int i = 0; i < 12; i++) {
-        DelObj(&cube_lines[i].line);
+//정20면체 회전 함수
+void RotateIcosahedron(struct Icosahedron* icosa, char axis, float angle, Line2D* icosa_lines, Line2D* prev_icosa_lines) {
+    // 먼저 이전 정20면체를 완전히 지우기
+    for (int i = 0; i < 30; i++) {
+        DelObj(&icosa_lines[i].line);
     }
 
     angle = (angle * M_PI / 180.0);
 
-    // 큐브의 중심점 계산
+    // 정20면체의 중심점 계산
     Vector3 center = {0, 0, 0};
-    for (int i = 0; i < 8; i++) {
-        center.x += cube->point[i].x;
-        center.y += cube->point[i].y;
-        center.z += cube->point[i].z;
+    for (int i = 0; i < 12; i++) {
+        center.x += icosa->point[i].x;
+        center.y += icosa->point[i].y;
+        center.z += icosa->point[i].z;
     }
-    center.x /= 8.0;
-    center.y /= 8.0;
-    center.z /= 8.0;
+    center.x /= 12.0;
+    center.y /= 12.0;
+    center.z /= 12.0;
 
-    // 큐브의 모든 점을 중심점 기준으로 회전
-    for (int i = 0; i < 8; i++) {
-        // 1. 중심점으로 이동 (translate to origin)
-        float x = cube->point[i].x - center.x;
-        float y = cube->point[i].y - center.y;
-        float z = cube->point[i].z - center.z;
+    // 정20면체의 모든 점을 중심점 기준으로 회전
+    for (int i = 0; i < 12; i++) {
+        // 1. 중심점으로 이동
+        float x = icosa->point[i].x - center.x;
+        float y = icosa->point[i].y - center.y;
+        float z = icosa->point[i].z - center.z;
 
         // 2. 회전 변환 적용
         float new_x, new_y, new_z;
         if (axis == 'x') {
-            // X축 회전
             new_x = x;
             new_y = cos(angle) * y - sin(angle) * z;
             new_z = sin(angle) * y + cos(angle) * z;
         }
         else if (axis == 'y') {
-            // Y축 회전
             new_x = cos(angle) * x + sin(angle) * z;
             new_y = y;
             new_z = -sin(angle) * x + cos(angle) * z;
         }
         else if (axis == 'z') {
-            // Z축 회전
             new_x = cos(angle) * x - sin(angle) * y;
             new_y = sin(angle) * x + cos(angle) * y;
             new_z = z;
         }
 
-        // 3. 다시 원래 위치로 이동 (translate back)
-        cube->point[i].x = new_x + center.x;
-        cube->point[i].y = new_y + center.y;
-        cube->point[i].z = new_z + center.z;
+        // 3. 다시 원래 위치로 이동
+        icosa->point[i].x = new_x + center.x;
+        icosa->point[i].y = new_y + center.y;
+        icosa->point[i].z = new_z + center.z;
     }
 
     // 새로운 2D 좌표로 변환
-    Point2D new_point[8];
-    for (int i = 0; i < 8; i++) {
-        new_point[i] = Vec3ToCamera(&cube->point[i]);
+    Point2D new_point[12];
+    for (int i = 0; i < 12; i++) {
+        new_point[i] = Vec3ToCamera(&icosa->point[i]);
     }
 
     // 모든 라인 스택 초기화
-    for (int i = 0; i < 12; i++) {
-        initStack(&cube_lines[i].line);
-        initStack(&prev_cube_lines[i].line);
+    for (int i = 0; i < 30; i++) {
+        initStack(&icosa_lines[i].line);
+        initStack(&prev_icosa_lines[i].line);
     }
 
-    // 정육면체 모서리 연결 (12개의 모서리)
-    // 앞면 (z = 20) 4개 모서리
-    DrawLine(&new_point[0], &new_point[2], &cube_lines[0], &prev_cube_lines[0]);
-    DrawLine(&new_point[2], &new_point[4], &cube_lines[1], &prev_cube_lines[1]);
-    DrawLine(&new_point[4], &new_point[3], &cube_lines[2], &prev_cube_lines[2]);
-    DrawLine(&new_point[3], &new_point[0], &cube_lines[3], &prev_cube_lines[3]);
+    // 정20면체의 30개 모서리 연결
+    int edges[30][2] = {
+        {0, 1}, {0, 4}, {0, 5}, {0, 8}, {0, 10},
+        {1, 6}, {1, 7}, {1, 8}, {1, 10}, {2, 3},
+        {2, 4}, {2, 5}, {2, 9}, {2, 11}, {3, 6},
+        {3, 7}, {3, 9}, {3, 11}, {4, 5}, {4, 8},
+        {4, 9}, {5, 10}, {5, 11}, {6, 7}, {6, 8},
+        {6, 9}, {7, 10}, {7, 11}, {8, 9}, {10, 11}
+    };
 
-    // 뒷면 (z = -20) 4개 모서리
-    DrawLine(&new_point[1], &new_point[5], &cube_lines[4], &prev_cube_lines[4]);
-    DrawLine(&new_point[5], &new_point[7], &cube_lines[5], &prev_cube_lines[5]);
-    DrawLine(&new_point[7], &new_point[6], &cube_lines[6], &prev_cube_lines[6]);
-    DrawLine(&new_point[6], &new_point[1], &cube_lines[7], &prev_cube_lines[7]);
+    for (int i = 0; i < 30; i++) {
+        DrawLine(&new_point[edges[i][0]], &new_point[edges[i][1]], &icosa_lines[i], &prev_icosa_lines[i]);
+    }
 
-    // 앞면과 뒷면을 연결하는 4개 모서리
-    DrawLine(&new_point[0], &new_point[1], &cube_lines[8], &prev_cube_lines[8]);
-    DrawLine(&new_point[2], &new_point[5], &cube_lines[9], &prev_cube_lines[9]);
-    DrawLine(&new_point[4], &new_point[7], &cube_lines[10], &prev_cube_lines[10]);
-    DrawLine(&new_point[3], &new_point[6], &cube_lines[11], &prev_cube_lines[11]);
-
-    // 모든 라인 업데이트 (새로운 큐브 그리기)
-    for (int i = 0; i < 12; i++) {
-        int obj_size = getSize(&cube_lines[i].line);
+    // 모든 라인 업데이트 (새로운 정20면체 그리기)
+    for (int i = 0; i < 30; i++) {
+        int obj_size = getSize(&icosa_lines[i].line);
         for (int j = 0; j < obj_size; j++) {
-            Point2D* pointPtr = (Point2D*)getAtIndex(&cube_lines[i].line, j);
+            Point2D* pointPtr = (Point2D*)getAtIndex(&icosa_lines[i].line, j);
             if (pointPtr != NULL) {
                 Point2D point = *pointPtr;
                 moveCursor(round(point.x)*2, round(point.y));
@@ -552,109 +556,56 @@ void RotateCube(Cube* cube, char axis, float angle, Line2D* cube_lines, Line2D* 
 //main 함수
 int main() {
     setbuf(stdout, NULL);
-    //콘솔 청소 + 화면 배열 초기화 + 스택 초기화
+    //콘솔 청소 + 화면 배열 초기화
     clearConsole();
     initScreen();
     ShowScreen();
 
-    //직선 생성
-    Point2D point1 = {x_size/2,y_size/2};
-    Point2D point2 = {x_size/2 + 10,y_size/2};
-    Line2D _line;
-    Line2D prev_line;
-    initStack(&_line.line);
-    initStack(&prev_line.line);
-
-    for (int i = 0; i < 10; i++) {
-        DrawLine(&point1,&point2, &_line, &prev_line);
-        update(&_line.line, &prev_line.line);
-        usleep(30000);
-        point2.y -= 1;
-    }
-    for (int i = 0; i < 20; i++) {
-        DrawLine(&point1,&point2, &_line, &prev_line);
-        update(&_line.line, &prev_line.line);
-        usleep(30000);
-        point2.x -= 1;
-    }
-    for (int i = 0; i < 20; i++) {
-        DrawLine(&point1,&point2, &_line, &prev_line);
-        update(&_line.line, &prev_line.line);
-        usleep(30000);
-        point2.y += 1;
-    }
-    for (int i = 0; i < 20; i++) {
-        DrawLine(&point1,&point2, &_line, &prev_line);
-        update(&_line.line, &prev_line.line);
-        usleep(30000);
-        point2.x += 1;
-    }
-    for (int i = 0; i < 10; i++) {
-        DrawLine(&point1,&point2, &_line, &prev_line);
-        update(&_line.line, &prev_line.line);
-        usleep(30000);
-        point2.y -= 1;
-    }
-
-    DelObj(&_line.line);
-
-
-    //정육면체 렌더링
-    Vector3 Point1 = {x_size/2+20,y_size/2+20,20};
-    Vector3 Point2 = {x_size/2+20,y_size/2+20,-20};
-    Vector3 Point3 = {x_size/2+20,y_size/2-20,20};
-    Vector3 Point4 = {x_size/2-20,y_size/2+20,20};
-    Vector3 Point5 = {x_size/2-20,y_size/2-20,20};
-    Vector3 Point6 = {x_size/2+20,y_size/2-20,-20};
-    Vector3 Point7 = {x_size/2-20,y_size/2+20,-20};
-    Vector3 Point8 = {x_size/2-20,y_size/2-20,-20};
-    Cube cube = {Point1, Point2, Point3, Point4, Point5, Point6, Point7, Point8};
+    //정20면체 생성 및 초기화
+    struct Icosahedron icosahedron;
+    InitIcosahedron(&icosahedron, 20.0f);  // 크기 20으로 초기화
 
     //원근 투영 적용
-    Point2D new_point[8];
-    for (int i = 0; i < 8; i++) {
-        new_point[i] = Vec3ToCamera(&cube.point[i]);
+    Point2D new_point[12];
+    for (int i = 0; i < 12; i++) {
+        new_point[i] = Vec3ToCamera(&icosahedron.point[i]);
     }
 
-    // 정육면체의 12개 모서리를 연결하는 코드
-    Line2D cube_lines[12];
-    Line2D prev_cube_lines[12];
+    // 정20면체의 30개 모서리를 연결하는 코드
+    Line2D icosa_lines[30];
+    Line2D prev_icosa_lines[30];
 
     // 모든 라인 스택 초기화
-    for (int i = 0; i < 12; i++) {
-        initStack(&cube_lines[i].line);
-        initStack(&prev_cube_lines[i].line);
+    for (int i = 0; i < 30; i++) {
+        initStack(&icosa_lines[i].line);
+        initStack(&prev_icosa_lines[i].line);
     }
 
-    // 정육면체 모서리 연결 (12개의 모서리)
-    // 앞면 (z = 20) 4개 모서리
-    DrawLine(&new_point[0], &new_point[2], &cube_lines[0], &prev_cube_lines[0]);  // Point1 - Point3
-    DrawLine(&new_point[2], &new_point[4], &cube_lines[1], &prev_cube_lines[1]);  // Point3 - Point5
-    DrawLine(&new_point[4], &new_point[3], &cube_lines[2], &prev_cube_lines[2]);  // Point5 - Point4
-    DrawLine(&new_point[3], &new_point[0], &cube_lines[3], &prev_cube_lines[3]);  // Point4 - Point1
+    // 정20면체의 30개 모서리 연결
+    int edges[30][2] = {
+        {0, 1}, {0, 4}, {0, 5}, {0, 8}, {0, 10},
+        {1, 6}, {1, 7}, {1, 8}, {1, 10}, {2, 3},
+        {2, 4}, {2, 5}, {2, 9}, {2, 11}, {3, 6},
+        {3, 7}, {3, 9}, {3, 11}, {4, 5}, {4, 8},
+        {4, 9}, {5, 10}, {5, 11}, {6, 7}, {6, 8},
+        {6, 9}, {7, 10}, {7, 11}, {8, 9}, {10, 11}
+    };
 
-    // 뒷면 (z = -20) 4개 모서리
-    DrawLine(&new_point[1], &new_point[5], &cube_lines[4], &prev_cube_lines[4]);  // Point2 - Point6
-    DrawLine(&new_point[5], &new_point[7], &cube_lines[5], &prev_cube_lines[5]);  // Point6 - Point8
-    DrawLine(&new_point[7], &new_point[6], &cube_lines[6], &prev_cube_lines[6]);  // Point8 - Point7
-    DrawLine(&new_point[6], &new_point[1], &cube_lines[7], &prev_cube_lines[7]);  // Point7 - Point2
-
-    // 앞면과 뒷면을 연결하는 4개 모서리
-    DrawLine(&new_point[0], &new_point[1], &cube_lines[8], &prev_cube_lines[8]);   // Point1 - Point2
-    DrawLine(&new_point[2], &new_point[5], &cube_lines[9], &prev_cube_lines[9]);   // Point3 - Point6
-    DrawLine(&new_point[4], &new_point[7], &cube_lines[10], &prev_cube_lines[10]); // Point5 - Point8
-    DrawLine(&new_point[3], &new_point[6], &cube_lines[11], &prev_cube_lines[11]); // Point4 - Point7
+    for (int i = 0; i < 30; i++) {
+        DrawLine(&new_point[edges[i][0]], &new_point[edges[i][1]], &icosa_lines[i], &prev_icosa_lines[i]);
+    }
 
     // 모든 라인 업데이트
-    for (int i = 0; i < 12; i++) {
-        update(&cube_lines[i].line, &prev_cube_lines[i].line);
+    for (int i = 0; i < 30; i++) {
+        update(&icosa_lines[i].line, &prev_icosa_lines[i].line);
     }
 
+    // 자동 회전 (주석 처리됨)
     // for (int i = 0; i < 1000; i++) {
-    //     RotateCube(&cube, 'x', +0.3, cube_lines, prev_cube_lines);
-    //     RotateCube(&cube, 'y', +0.6, cube_lines, prev_cube_lines);
-    //     RotateCube(&cube, 'z', +0.9, cube_lines, prev_cube_lines);
-    //     usleep(10000);
+    //     RotateIcosahedron(&icosahedron, 'x', +0.5, icosa_lines, prev_icosa_lines);
+    //     RotateIcosahedron(&icosahedron, 'y', +0.8, icosa_lines, prev_icosa_lines);
+    //     RotateIcosahedron(&icosahedron, 'z', +1.2, icosa_lines, prev_icosa_lines);
+    //     usleep(20000);
     // }
 
     char key;
@@ -662,54 +613,54 @@ int main() {
         if (kbhit()) {
             key = getchar();
             if (key == 'p') {
-                break;  // 'q' 입력 시 종료
+                break;  // 'p' 입력 시 종료
             } else if (key == 'w') {
-                moveCursor(0,  -1);
-                MoveCube(&cube, 'y', 1, cube_lines, prev_cube_lines);
+                moveCursor(0, -1);
+                MoveIcosahedron(&icosahedron, 'y', 1, icosa_lines, prev_icosa_lines);
             } else if (key == 'a') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("A 키 눌림\n");
-                MoveCube(&cube, 'x', -1, cube_lines, prev_cube_lines);
+                MoveIcosahedron(&icosahedron, 'x', -1, icosa_lines, prev_icosa_lines);
             } else if (key == 's') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("S 키 눌림\n");
-                MoveCube(&cube, 'y', -1, cube_lines, prev_cube_lines);
+                MoveIcosahedron(&icosahedron, 'y', -1, icosa_lines, prev_icosa_lines);
             } else if (key == 'd') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("D 키 눌림\n");
-                MoveCube(&cube, 'x', 1, cube_lines, prev_cube_lines);
+                MoveIcosahedron(&icosahedron, 'x', 1, icosa_lines, prev_icosa_lines);
             } else if (key == 'q') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("Q 키 눌림\n");
-                MoveCube(&cube, 'z', 1, cube_lines, prev_cube_lines);
+                MoveIcosahedron(&icosahedron, 'z', 1, icosa_lines, prev_icosa_lines);
             } else if (key == 'e') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("E 키 눌림\n");
-                MoveCube(&cube, 'z', -1, cube_lines, prev_cube_lines);
+                MoveIcosahedron(&icosahedron, 'z', -1, icosa_lines, prev_icosa_lines);
             } else if (key == 'j') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("J 키 눌림\n");
-                RotateCube(&cube, 'z', -2, cube_lines, prev_cube_lines);
+                RotateIcosahedron(&icosahedron, 'z', -2, icosa_lines, prev_icosa_lines);
             } else if (key == 'l') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("L 키 눌림\n");
-                RotateCube(&cube, 'z', +2, cube_lines, prev_cube_lines);
+                RotateIcosahedron(&icosahedron, 'z', +2, icosa_lines, prev_icosa_lines);
             } else if (key == 'i') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("I 키 눌림\n");
-                RotateCube(&cube, 'x', -2, cube_lines, prev_cube_lines);
+                RotateIcosahedron(&icosahedron, 'x', -2, icosa_lines, prev_icosa_lines);
             } else if (key == 'k') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("K 키 눌림\n");
-                RotateCube(&cube, 'x', +2, cube_lines, prev_cube_lines);
+                RotateIcosahedron(&icosahedron, 'x', +2, icosa_lines, prev_icosa_lines);
             } else if (key == 'u') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("U 키 눌림\n");
-                RotateCube(&cube, 'y', -2, cube_lines, prev_cube_lines);
+                RotateIcosahedron(&icosahedron, 'y', -2, icosa_lines, prev_icosa_lines);
             } else if (key == 'o') {
-                moveCursor(0,  -1);
+                moveCursor(0, -1);
                 printf("O 키 눌림\n");
-                RotateCube(&cube, 'y', +2, cube_lines, prev_cube_lines);
+                RotateIcosahedron(&icosahedron, 'y', +2, icosa_lines, prev_icosa_lines);
             }
 
         }
